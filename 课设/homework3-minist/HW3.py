@@ -1,18 +1,51 @@
-import cv2 as cv
 import numpy as np
-import torch
-from sklearn import datasets
-import torch.utils.data as TorchData
-from torchvision import datasets, models, transforms
-import time
-import glob
+import cv2 as cv
+import torch #用于深度学习的库Pytorch
+from torchvision import datasets #torchvision用于处理图像和视频数据，datasets中有常见的数据集
+from torchvision.transforms import v2 as transforms2 #transforms是对数据集的处理和变换
+import glob #获取全部的文件名
+import os
+TOTAL_NUM = 100
+TRAIN_NUM = 5 #训练集大小
+TEST_NUM = 95 #测试集大小
+BATCH_SIZE = 64
+DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-TRAIN_NUM = 6
-TEST_NUM = 4
 def main():
+    #get_minist_data()
     SVM()
     #Torch()
     return
+#####从MINIST数据集获得图片以便于传统方法识别#####
+def get_minist_data():
+    # 加载Mnist数据集
+    transform = transforms2.Compose([transforms2.ToTensor(),
+                                    transforms2.Normalize(mean=[0.5], std=[0.5])])
+    mnist_train = datasets.MNIST(root="./data/",
+                                 transform=transform,
+                                 train=True)
+    minist = torch.utils.data.DataLoader(mnist_train, batch_size=1, shuffle=False)
+    # 保存MINIST数据为图片
+    lable_count = {}#用于给某一类的图片进行编号
+    for data in minist:
+        img = data[0].clone().numpy()[0][0] # 拷贝数据转换为np数组
+        img = img *255 # dataloader中数据以浮点归一化形式存放，需要反归一和改变数据类型
+        img = img.astype(np.uint8)
+        lable = str(data[1].clone().numpy()[0])
+        save_path = './data/minist_data/' + lable
+        # 判断save_path是否存在,没有就创建他。
+        if not os.path.exists(save_path): #imwrite不能创建文件夹，因此此步骤是必须的。
+            os.mkdir(save_path)
+        if lable in lable_count:
+            if (lable_count[lable] >= TOTAL_NUM):#达到训练集大小要求，不再对这一类生成图片
+                continue
+            lable_count[lable] = lable_count[lable] + 1
+        else:
+            lable_count[lable] = 1
+        img_path = save_path + '/' + str(lable_count[lable]) + '.bmp'
+        # 图像二值化处理
+        retval, binary_img = cv.threshold(img, 127, 255, cv.THRESH_BINARY)  # 阈值设为127
+        cv.imwrite(img_path, binary_img)  # 保存二值化图片
 
 #######################################
 #==============传统方法================#
@@ -21,14 +54,14 @@ def main():
 #####SVM方法，构造数据集、设置svm模型、使用svm模型#####
 def SVM():
     #----------获取训练数据----------------
-    trainData, trainLabels, testData, TestLabels = getData()
+    trainData, trainLabels, testData, testLabels = getData()
     # ----------构造svm------------------
-    svm = cv.ml.SVM_create()  # 初始化
-    svm.setKernel(cv.ml.SVM_LINEAR)  # 设置kernel类型
+    svm = cv.ml.SVM_create()  # 创建一个SVM实例，svm一般用于线性的二分类问题
+    svm.setKernel(cv.ml.SVM_LINEAR)  # 设置kernel类型，可以使用非线性的核函数实现实际上的非线性分类
     svm.train(trainData, cv.ml.ROW_SAMPLE, trainLabels)  # 训练svm
     # ----------使用svm------------------
     result = svm.predict(testData)[1]  # 获取识别标签
-    mask = result == TestLabels  # 比较识别结果是否等于实际标签
+    mask = result == testLabels  # 比较识别结果是否等于实际标签
     correct = np.count_nonzero(mask)  # 计算非零值（相等）的个数
     accuracy = correct * 100.0 / result.size  # 计算准确率（相等个数/全部）
     print("识别准确率为：",accuracy)
@@ -38,43 +71,51 @@ def SVM():
 def getData():
     data=[]   #存储所有数字的所有图像
     for i in range(0,10):
-        iTen=glob.glob('data/'+str(i)+'/*.*')   # 所有图像的文件名
+        #iTen=glob.glob('data/small_data/'+str(i)+'/*.*')
+        iTen=glob.glob('data/minist_data/'+str(i)+'/*.*')  #使用glob函数获得满足的所有文件名
         num=[]      #临时列表，每次循环用来存储某一个数字的所有图像
-        for number in iTen:    #逐个提取文件名
+        for file in iTen:    #逐个提取文件名
             # step 1:预处理（读取图像，色彩转换、大小转换）
-            image=cv.imread(number)   #逐个读取文件，放入image中
+            image=cv.imread(file)   #逐个读取文件，放入image中
             image=cv.cvtColor(image,cv.COLOR_BGR2GRAY)   #彩色——>灰色
-            # x=255-x   #必要时需要做反色处理：前景背景切换
+            #必要时需要做反色处理：前景背景切换  # x=255-x
             image=cv.resize(image,(20,20))   #调整大小
             # step2：倾斜校正
             image=deskew(image)   #倾斜校正
             # step3：获取hog值
             hogValue=hog(image)   #获取hog值
             num.append(hogValue)  #把当前图像的hog值放入num中
-        data.append(num)  #把单个数字的所有hogvalue放入data，每个数字所有hog值占一行
+        data.append(num)  #把单个数字的所有hogValue放入data，每个数字所有hog值占一行 10*10
     x=np.array(data)
     # step4：划分数据集（训练集、测试集）
-    trainData=np.float32(x[:,:TRAIN_NUM])
-    testData=np.float32(x[:,TRAIN_NUM:])
+    trainData=np.float32(x[:,:TRAIN_NUM])#每个数字的0~TRAIN_NUM-1范围内的图片的HOG作为训练集
+    testData=np.float32(x[:,TRAIN_NUM:])#每个数字的=TRAIN_NUM~9范围内的图片的HOG作为训练集
     # step5：塑形，调整为64列
-    trainData=trainData.reshape(-1,64)    #训练图像调整为64列形式
-    testData=testData.reshape(-1,64)     #测试图像调整为64列形式
+    trainData=trainData.reshape(-1,64)    #-1表示自动的适配行，按照内存中的顺序（先行后列）。因此每TRAIN_NUM个元素对应一个数字不同图像的HOG值
+    testData=testData.reshape(-1,64)     #同理，每10-TRAIN_NUM个元素对应一个数字不同图像的HOG值
     # step6：打标签
-    trainLabels = np.repeat(np.arange(10),TRAIN_NUM)[:,np.newaxis]      #训练图像贴标签
-    TestLabels = np.repeat(np.arange(10),TEST_NUM)[:,np.newaxis]       #测试图像贴标签
-    return  trainData,trainLabels,testData,TestLabels
+    trainLabels = np.repeat(np.arange(10),TRAIN_NUM)[:,np.newaxis]      #训练图像贴标签,重复TRAIN_NUM次（这TRAIN_NUM个是同一个数字）
+    testLabels = np.repeat(np.arange(10),TEST_NUM)[:,np.newaxis]       #测试图像贴标签
+    return  trainData,trainLabels,testData,testLabels
 
-#####抗扭斜函数#####
+#####抗扭斜函数，通过一个仿射变换实现对图倾斜度的纠正#####
 def deskew(img):
-    m = cv.moments(img)
+    #怎么选择一个合适的倾斜度度量？
+    #基于统计的方法。
+    #Todo:怎么由倾斜度决定仿射矩阵的取值？
+    m = cv.moments(img)#计算图的x和y两个随机变量在三阶以下的矩，这些数据被用来描述形状、位置等信息
+    '''
+    m中包含空间矩(e.g. m00)、中心矩(e.g. mu02 , mu11)和归一化中心矩(e.g. nu01)。
+    mu02：y坐标的二阶中心矩，描述了在y轴上的倾斜情况。 mu11：x和y坐标的混合二阶中心矩。有倾斜度是mu11/mu02
+    '''
     if abs(m['mu02']) < 1e-2:
-        return img.copy()
-    skew = m['mu11']/m['mu02']
-    s=20
-    M = np.float32([[1, skew, -0.5*s*skew], [0, 1, 0]])
-    affine_flags = cv.WARP_INVERSE_MAP|cv.INTER_LINEAR
+        return img.copy()#在y上的二阶中心矩很小，说明倾斜可以忽略不计
+    skew = m['mu11']/m['mu02']#计算偏斜度
     size=(20,20)   #每个数字的图像的尺寸
-    img = cv.warpAffine(img,M,size,flags=affine_flags)
+    s=20
+    M = np.float32([[1, skew, -0.5*s*skew], [0, 1, 0]])#设置仿射矩阵，用于恢复倾斜
+    affine_flags = cv.WARP_INVERSE_MAP|cv.INTER_LINEAR
+    img = cv.warpAffine(img,M,size,flags=affine_flags)#应用仿射矩阵
     return img
 
 #####HOG函数#####
@@ -94,13 +135,10 @@ def hog(img):
 ######################################
 
 def Torch():
-    BATCH_SIZE = 64
-    DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    # DEVICE = torch.device("cpu")
     # 1. 数据准备
     #os.environ['KMP_DUPLICATE_LIB_OK']='True'
-    transform=transforms.Compose([transforms.ToTensor(),
-                                  transforms.Normalize(mean=[0.5],std=[0.5])])
+    transform=transforms2.Compose([transforms2.ToTensor(),
+                                  transforms2.Normalize(mean=[0.5],std=[0.5])])
     train_dataset = datasets.MNIST(root = "./data/",
                                 transform=transform,
                                 train = True,
@@ -143,7 +181,6 @@ def Torch():
     loss_func = torch.nn.CrossEntropyLoss() # 对于多分类一般采用的交叉熵损失函数,
     # 4. 训练模型
     EPOCH=5
-    time_open = time.time()
     for t in range(EPOCH):
         training_loss = 0.0
         training_correct = 0
@@ -169,8 +206,6 @@ def Torch():
         train_Accuracy = 100 * training_correct / len(train_dataset)
         test_Accuracy = 100 * testing_correct / len(test_dataset)
         print("Epoch {:d}/{:d}: Train Loss is:{:.4f}, Train Accuracy is:{:.4f}%, Test Accuracy is:{:.4f}".format(t+1,EPOCH,loss,train_Accuracy,test_Accuracy))
-    time_end = time.time() - time_open
-    print(time_end)
     return
 
 if __name__ == "__main__":

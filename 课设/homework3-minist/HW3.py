@@ -5,9 +5,9 @@ from torchvision import datasets #torchvision用于处理图像和视频数据�
 from torchvision.transforms import v2 as transforms2 #transforms是对数据集的处理和变换
 import glob #获取全部的文件名
 import os
-TOTAL_NUM = 100
+TOTAL_NUM = 100#抽取出的MINIST数据集大小
 TRAIN_NUM = 5 #训练集大小
-TEST_NUM = 95 #测试集大小
+TEST_NUM = TOTAL_NUM - TRAIN_NUM #测试集大小
 BATCH_SIZE = 64
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -16,7 +16,11 @@ def main():
     SVM()
     #Torch()
     return
-#####从MINIST数据集获得图片以便于传统方法识别#####
+#######################################
+#============数据集处理方式==============#
+######################################
+
+#=======从MINIST数据集获得图片以便于传统方法识别======#
 def get_minist_data():
     # 加载Mnist数据集
     transform = transforms2.Compose([transforms2.ToTensor(),
@@ -46,46 +50,49 @@ def get_minist_data():
         # 图像二值化处理
         retval, binary_img = cv.threshold(img, 127, 255, cv.THRESH_BINARY)  # 阈值设为127
         cv.imwrite(img_path, binary_img)  # 保存二值化图片
+def get_more_data():
+    #Todo:仿射变换数据集增强
+    return
 
 #######################################
 #==============传统方法================#
 ######################################
 
-#####SVM方法，构造数据集、设置svm模型、使用svm模型#####
+#====SVM方法，构造数据集、设置svm模型、使用svm模型====#
 def SVM():
     #----------获取训练数据----------------
     trainData, trainLabels, testData, testLabels = getData()
     # ----------构造svm------------------
-    svm = cv.ml.SVM_create()  # 创建一个SVM实例，svm一般用于线性的二分类问题
+    svm = cv.ml.SVM_create()  # 创建一个SVM实例，一般用于线性的二分类问题
     svm.setKernel(cv.ml.SVM_LINEAR)  # 设置kernel类型，可以使用非线性的核函数实现实际上的非线性分类
     svm.train(trainData, cv.ml.ROW_SAMPLE, trainLabels)  # 训练svm
     # ----------使用svm------------------
     result = svm.predict(testData)[1]  # 获取识别标签
-    mask = result == testLabels  # 比较识别结果是否等于实际标签
+    mask =  result == testLabels  # 比较识别结果是否等于实际标签
     correct = np.count_nonzero(mask)  # 计算非零值（相等）的个数
     accuracy = correct * 100.0 / result.size  # 计算准确率（相等个数/全部）
     print("识别准确率为：",accuracy)
     return
 
-#####getData函数，获取训练数据、测试数据及对应标签（预先倾斜矫正和获取HOG值）#####
+#====getData函数，获取训练数据、测试数据及对应标签（预先倾斜矫正和获取HOG值）====#
 def getData():
-    data=[]   #存储所有数字的所有图像
+    data=[]   # 存储所有数字的所有图像
     for i in range(0,10):
         #iTen=glob.glob('data/small_data/'+str(i)+'/*.*')
-        iTen=glob.glob('data/minist_data/'+str(i)+'/*.*')  #使用glob函数获得满足的所有文件名
-        num=[]      #临时列表，每次循环用来存储某一个数字的所有图像
-        for file in iTen:    #逐个提取文件名
+        iTen=glob.glob('data/minist_data/'+str(i)+'/*.*')  # 使用glob函数获得满足的所有文件名
+        num=[]      # 临时列表，每次循环用来存储某一个数字的所有图像特征
+        for file in iTen:    # 逐个提取文件名
             # step 1:预处理（读取图像，色彩转换、大小转换）
-            image=cv.imread(file)   #逐个读取文件，放入image中
-            image=cv.cvtColor(image,cv.COLOR_BGR2GRAY)   #彩色——>灰色
-            #必要时需要做反色处理：前景背景切换  # x=255-x
-            image=cv.resize(image,(20,20))   #调整大小
+            image=cv.imread(file,0)   # 逐个读取文件，放入image中
+            #image=cv.cvtColor(image,cv.COLOR_BGR2GRAY)   # 彩色——>灰色
+            #必要时需要做反色处理：前景背景切换  #x=255-x
+            image=cv.resize(image,(20,20))   # 调整大小
             # step2：倾斜校正
-            image=deskew(image)   #倾斜校正
+            image=deskew(image)   # 倾斜校正
             # step3：获取hog值
-            hogValue=hog(image)   #获取hog值
-            num.append(hogValue)  #把当前图像的hog值放入num中
-        data.append(num)  #把单个数字的所有hogValue放入data，每个数字所有hog值占一行 10*10
+            hogValue=hog(image)   # 获取hog值
+            num.append(hogValue)  # 把当前图像的hog值放入num中
+        data.append(num)  # 把单个数字的所有hogValue放入data，每个数字所有hog值占一行 TOTAL_NUM*10
     x=np.array(data)
     # step4：划分数据集（训练集、测试集）
     trainData=np.float32(x[:,:TRAIN_NUM])#每个数字的0~TRAIN_NUM-1范围内的图片的HOG作为训练集
@@ -98,42 +105,45 @@ def getData():
     testLabels = np.repeat(np.arange(10),TEST_NUM)[:,np.newaxis]       #测试图像贴标签
     return  trainData,trainLabels,testData,testLabels
 
-#####抗扭斜函数，通过一个仿射变换实现对图倾斜度的纠正#####
+#====抗扭斜函数，通过一个仿射变换实现对图倾斜度的纠正====#
 def deskew(img):
-    #怎么选择一个合适的倾斜度度量？
-    #基于统计的方法。
-    #Todo:怎么由倾斜度决定仿射矩阵的取值？
+    #怎么选择一个合适的倾斜度度量？ 基于统计的方法。
     m = cv.moments(img)#计算图的x和y两个随机变量在三阶以下的矩，这些数据被用来描述形状、位置等信息
     '''
     m中包含空间矩(e.g. m00)、中心矩(e.g. mu02 , mu11)和归一化中心矩(e.g. nu01)。
-    mu02：y坐标的二阶中心矩，描述了在y轴上的倾斜情况。 mu11：x和y坐标的混合二阶中心矩。有倾斜度是mu11/mu02
+    mu02：y坐标的二阶中心矩，描述了在y轴上的倾斜情况。 mu11：x和y坐标的混合二阶中心矩。
+    倾斜度是mu11/mu02
     '''
     if abs(m['mu02']) < 1e-2:
         return img.copy()#在y上的二阶中心矩很小，说明倾斜可以忽略不计
     skew = m['mu11']/m['mu02']#计算偏斜度
     size=(20,20)   #每个数字的图像的尺寸
     s=20
+    #怎么由倾斜度决定仿射矩阵的取值？
     M = np.float32([[1, skew, -0.5*s*skew], [0, 1, 0]])#设置仿射矩阵，用于恢复倾斜
     affine_flags = cv.WARP_INVERSE_MAP|cv.INTER_LINEAR
     img = cv.warpAffine(img,M,size,flags=affine_flags)#应用仿射矩阵
     return img
 
-#####HOG函数#####
+#====HOG函数，计算图的方向梯度直方图====#
 def hog(img):
+    #使用sobel算子计算水平和垂直梯度
     gx = cv.Sobel(img, cv.CV_32F, 1, 0)
     gy = cv.Sobel(img, cv.CV_32F, 0, 1)
-    mag, ang = cv.cartToPolar(gx, gy)
-    bins = np.int32(16*ang/(2*np.pi))
+    mag, ang = cv.cartToPolar(gx, gy)#梯度转化为极坐标形式
+    bins = np.int32(16*ang/(2*np.pi))#规约弧度到16个刻度之间
+    #分区计算方向和幅值的直方图统计
     bin_cells = bins[:10,:10], bins[10:,:10], bins[:10,10:], bins[10:,10:]
     mag_cells = mag[:10,:10], mag[10:,:10], mag[:10,10:], mag[10:,10:]
     hists = [np.bincount(b.ravel(), m.ravel(),16) for b, m in zip(bin_cells, mag_cells)]
-    hist = np.hstack(hists)
+    #zip捆绑迭代，ravel展平数组，bincount计算方向值0-15出现的频率然后乘以该点的幅度
+    hist = np.hstack(hists)#hstack链接为（16+16+16+16） = 64
     return hist
 
 #######################################
 #============机器学习方法===============#
 ######################################
-
+#Todo:添加倾斜矫正
 def Torch():
     # 1. 数据准备
     #os.environ['KMP_DUPLICATE_LIB_OK']='True'

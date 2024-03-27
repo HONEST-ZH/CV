@@ -1,18 +1,18 @@
 # 输入文件
-从当前路径下读取cat.png文件作为图像输入。图像如下：
+从当前路径下读取cat.png文件作为图像输入。图像如下：  
 ![原图](cat.png)
 # 输出结果
 将自己编写的高斯模糊代码得到的结果与原图和使用cv库中的GaussianBlur方法得到的结果进行比较。结果展示如下：
 ![对比](Result.png)
-<center> 图1 </center>
+<div style="text-align: center;"> 图1 </div>
 
 将不同卷积核大小情况下，使用cv库中的GaussianBlur方法得到的结果进行对比。结果展示如下：
 ![卷积核](Kernel_size.png)
-<center> 图2 </center>  
+<div style="text-align: center;"> 图2 </div>  
 
 将不同方差情况下，使用cv库中的GaussianBlur方法得到的结果进行对比。结果展示如下：
 ![方差](Var.png)  
-<center> 图3 </center>  
+<div style="text-align: center;"> 图3 </div>  
 
 # 结论
 对比输出结果中的图1，可以发现自行编写的高斯模糊与使用cv库进行的高斯模糊效果几乎一致。

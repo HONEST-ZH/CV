@@ -17,17 +17,17 @@ BATCH_SIZE = 64
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 def main():
-    #从MINIST数据集或者进行仿射变换获取图像数据，已存放在data中，无需再次执行
+    #=====从MINIST数据集或者进行仿射变换获取图像数据，已存放在data中，无需再次执行=====#
     #get_minist_data()
     #affine_data()
 
+    # SVM方法
     # 引入控制SVM训练的全局变量，便于绘图
     global TOTAL_NUM
     global TRAIN_NUM
     global TEST_NUM
     global DESKEW_FLAG
     global DATESET_FLAG
-
     #=====开启倾斜矫正，测试不同训练集，不同数据规模下传统方法的准确率=====#
     DESKEW_FLAG = 1
     small_accuracy_deskew = []
@@ -44,7 +44,7 @@ def main():
     #-----minist_data中开启倾斜矫正，不同数据规模下的准确率-----#
     DATESET_FLAG = 1
     TOTAL_NUM = 100
-    for i in range(10, 90):
+    for i in range(1, 100):
         TRAIN_NUM = i
         TEST_NUM = TOTAL_NUM - TRAIN_NUM
         accuracy = SVM()
@@ -52,12 +52,11 @@ def main():
     #-----affine_data中开启倾斜矫正，不同数据规模下的准确率-----#
     DATESET_FLAG = 2
     TOTAL_NUM = 100
-    for i in range(10, 90):
+    for i in range(1, 100):
         TRAIN_NUM = i
         TEST_NUM = TOTAL_NUM - TRAIN_NUM
         accuracy = SVM()
         affine_accuracy_deskew.append(accuracy)
-
     #=====关闭倾斜矫正，测试不同训练集，不同数据规模下传统方法的准确率=====#
     DESKEW_FLAG = 0
     small_accuracy = []
@@ -74,7 +73,7 @@ def main():
     #-----minist_data中关闭倾斜矫正，不同数据规模下的准确率-----#
     DATESET_FLAG = 1
     TOTAL_NUM = 100
-    for i in range(10, 90):
+    for i in range(1, 100):
         TRAIN_NUM = i
         TEST_NUM = TOTAL_NUM - TRAIN_NUM
         accuracy = SVM()
@@ -82,12 +81,11 @@ def main():
     #-----affine_data中关闭倾斜矫正，不同数据规模下的准确率-----#
     DATESET_FLAG = 2
     TOTAL_NUM = 100
-    for i in range(10, 90):
+    for i in range(1, 100):
         TRAIN_NUM = i
         TEST_NUM = TOTAL_NUM - TRAIN_NUM
         accuracy = SVM()
         affine_accuracy.append(accuracy)
-
     #=====绘图，展示准确率差异=====#
     plt.rcParams['font.sans-serif'] = ['SimHei']  # 使用黑体
     fig, ax = plt.subplots()# 使用标签绘制每个列表
@@ -101,11 +99,25 @@ def main():
     ax.set_title('不同数据集是否使用倾斜校正的准确率对比')# 设置标题和标签
     ax.set_xlabel('数据量')
     ax.set_ylabel('准确率')
-    plt.show()# 显示图表
     fig.savefig("accuracy.png")
 
     #深度学习方法
-    Torch()
+    DESKEW_FLAG = 0
+    Train_Accuracy, Test_Accuracy = Torch()
+    DESKEW_FLAG = 1
+    Train_Accuracy2, Test_Accuracy2 = Torch()
+    # =====绘图，展示准确率差异=====#
+    plt.rcParams['font.sans-serif'] = ['SimHei']  # 使用黑体
+    fig1, ax1 = plt.subplots()  # 使用标签绘制每个列表
+    ax1.plot(Train_Accuracy, label='未倾斜校正，深度学习方法在训练集上的准确率')
+    ax1.plot(Test_Accuracy, label='未倾斜校正，深度学习方法在测试集上的准确率')
+    ax1.plot(Train_Accuracy2, label='倾斜校正，深度学习方法在训练集上的准确率')
+    ax1.plot(Test_Accuracy2, label='倾斜校正，深度学习方法在测试集的准确率')
+    ax1.legend()  # 向图表添加图例
+    ax1.set_title('深度学习下是否使用倾斜校正的准确率对比')  # 设置标题和标签
+    ax1.set_xlabel('EPOCH')
+    ax1.set_ylabel('准确率')
+    fig1.savefig("CNN.png")
     return
 #######################################
 #============数据集处理方式==============#
@@ -233,8 +245,9 @@ def deskew(img):
     if abs(m['mu02']) < 1e-2:
         return img.copy()#在y上的二阶中心矩很小，说明倾斜可以忽略不计
     skew = m['mu11']/m['mu02']#计算偏斜度
-    size=(20,20)   #每个数字的图像的尺寸
-    s=20
+    height, width = img.shape[:2]
+    size=(height,width)   #每个数字的图像的尺寸
+    s=width
     #怎么由倾斜度决定仿射矩阵的取值？
     M = np.float32([[1, skew, -0.5*s*skew], [0, 1, 0]])#设置仿射矩阵，用于恢复倾斜
     affine_flags = cv.WARP_INVERSE_MAP|cv.INTER_LINEAR
@@ -259,12 +272,25 @@ def hog(img):
 #######################################
 #============机器学习方法===============#
 ######################################
-#Todo:添加倾斜矫正
+
+#对张量的图像数据进行倾斜校正
+def deskew_tensor(tensor):
+    img = np.array(tensor[0])
+    img = deskew(img)
+    new_tensor = torch.tensor(img)
+    new_tensor = new_tensor.reshape((1, 28, 28))
+    return new_tensor
+
 def Torch():
     # 1. 数据准备
     #os.environ['KMP_DUPLICATE_LIB_OK']='True'
-    transform=transforms2.Compose([transforms2.ToTensor(),
-                                  transforms2.Normalize(mean=[0.5],std=[0.5])])
+    if DESKEW_FLAG == 1:#开启倾斜矫正
+        transform=transforms2.Compose([transforms2.ToTensor(),
+                                       transforms2.Lambda(deskew_tensor),
+                                       transforms2.Normalize(mean=[0.5],std=[0.5])])
+    if DESKEW_FLAG == 0:#关闭倾斜矫正
+        transform = transforms2.Compose([transforms2.ToTensor(),
+                                         transforms2.Normalize(mean=[0.5], std=[0.5])])
     train_dataset = datasets.MNIST(root = "./data/",
                                 transform=transform,
                                 train = True,
@@ -306,7 +332,9 @@ def Torch():
     optimizer = torch.optim.Adam(model.parameters())
     loss_func = torch.nn.CrossEntropyLoss() # 对于多分类一般采用的交叉熵损失函数,
     # 4. 训练模型
-    EPOCH=5
+    EPOCH=10
+    Train_Accuracy = []
+    Test_Accuracy = []
     for t in range(EPOCH):
         training_loss = 0.0
         training_correct = 0
@@ -331,8 +359,10 @@ def Torch():
         loss= float(training_loss*BATCH_SIZE/len(train_dataset))
         train_Accuracy = 100 * training_correct / len(train_dataset)
         test_Accuracy = 100 * testing_correct / len(test_dataset)
+        Train_Accuracy.append(train_Accuracy.item())
+        Test_Accuracy.append(test_Accuracy.item())
         print("Epoch {:d}/{:d}: Train Loss is:{:.4f}, Train Accuracy is:{:.4f}%, Test Accuracy is:{:.4f}".format(t+1,EPOCH,loss,train_Accuracy,test_Accuracy))
-    return
+    return Train_Accuracy, Test_Accuracy
 
 if __name__ == "__main__":
     main()

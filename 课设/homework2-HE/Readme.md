@@ -5,19 +5,19 @@
 # 输出结果
 使用不同的方式对输入图片的灰度图进行直方图均衡、限制对比度自适应直方图均衡、伽马矫正，将所得的结果进行对比。展示如下：
 ![对比](Picture.png)
-<center> 图1 </center>
+<div style="text-align: center;"> 图1 </div>
 
 计算原图、经直方图均衡的图像、经限制对比度自适应直方图均衡的图像、经伽马矫正的图像的直方图。展示如下：
 ![直方图](Histogram.png)
-<center> 图2 </center>  
+<div style="text-align: center;"> 图2 </div>  
 
 调整不同的Gamma值进行Gamma矫正，结果展示如下：
 ![Gamma值](Gamma.png)  
-<center> 图3 </center>
+<div style="text-align: center;"> 图3 </div>
 
 使用多种图像对Gamma矫正和CLAHE进行测试，结果展示如下：
 ![Gamma对比CLAHE](Gamma_CLAHE.png)  
-<center> 图4 </center>
+<div style="text-align: center;"> 图4 </div>
 
 # 结论
 观察输出结果的图1不难发现，直方图均衡后的图像暗部更明显，整体更亮。

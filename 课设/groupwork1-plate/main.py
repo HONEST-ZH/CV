@@ -1,5 +1,5 @@
+import random
 import cv2
-# from matplotlib import pyplot as plt
 import numpy as np
 import glob
 
@@ -18,44 +18,44 @@ def getPlate(image):
     image = cv2.resize(image, (640, 480))
     rawImage = image.copy()
     image = preprocessor(image)
-    #cv2.imshow('gray', image)
+    cv2.imshow('gray', image)
     '''
     #CLAHE,去除光影
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
     image = clahe.apply(image)
     #cv2.imshow('clahe', image)
     '''
+    '''
     # 计算边缘
-
     #Sobel算子（X方向边缘梯度）计算边缘会丢失y轴水平方向的的信息。
     #例如F的两个横线。导致close操作的过程当中和点之后的字符差距过大，被识别为两个轮廓！
     Sobel_x = cv2.Sobel(image, cv2.CV_16S, 1, 0)
     absX = cv2.convertScaleAbs(Sobel_x)  # 映射到[0.255]内
     image = absX
-    #cv2.imshow('sobel', image)
+    cv2.imshow('sobel', image)
     # 阈值处理
     ret, image = cv2.threshold(image, 0, 255, cv2.THRESH_OTSU)
-    #cv2.imshow('threshold', image)
+    cv2.imshow('threshold', image)
     '''
     #canny边缘检测
-    image = cv2.Canny(image, 100, 200)
+    image = cv2.Canny(image, 50, 100)
     cv2.imshow('canny', image)
-    '''
 
     # 闭运算：先膨胀后腐蚀，车牌各个字符是分散的，让车牌构成一体
     kernelX = cv2.getStructuringElement(cv2.MORPH_RECT, (17, 5))#怎么确定合适的膨胀腐蚀核以实现正好的分割？
     image = cv2.morphologyEx(image, cv2.MORPH_CLOSE, kernelX)
+    cv2.imshow('close', image)
     # 开运算：先腐蚀后膨胀，去除噪声
     kernelY = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 19))#每个图可能都需要不同的核？
     image = cv2.morphologyEx(image, cv2.MORPH_OPEN, kernelY)
-    #cv2.imshow('open', image)
+    cv2.imshow('open', image)
     # 中值滤波：去除噪声
     image = cv2.medianBlur(image, 15)
-    #cv2.imshow('filter', image)
+    cv2.imshow('filter', image)
     # 查找轮廓
     contours, hierarchy = cv2.findContours(image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     image = cv2.drawContours(rawImage.copy(), contours, -1, (0, 0, 255), 3)
-    #cv2.imshow('imagecc', image)
+    cv2.imshow('imagecc', image)
     #逐个遍历，将宽度在3倍高度的轮廓挑选出来
     for item in contours:
         rect = cv2.boundingRect(item)
@@ -64,8 +64,10 @@ def getPlate(image):
         weight = rect[2]
         height = rect[3]
         scale = weight/height
-        if scale > 3 :
+        if scale > 2 :
             plate = rawImage[y:y + height, x:x + weight]
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
     return plate
 
 #=======STEP3.车牌分割===========#
@@ -74,20 +76,20 @@ def getPlate(image):
 # ------STEP3.1 让一个字构成一个整体---------
 def GetOne(image):
     image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    #cv2.imshow('gray', image)
+    cv2.imshow('gray', image)
     '''
     #CLAHE,去除光影
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
     image = clahe.apply(image)
-    # cv2.imshow('clahe', image)
+    cv2.imshow('clahe', image)
     '''
     # 阈值处理（二值化）
     ret, image = cv2.threshold(image, 0, 255, cv2.THRESH_OTSU)
-    #cv2.imshow('bin', image)
+    cv2.imshow('bin', image)
     # 膨胀处理，让一个字构成一个整体（大多数字不是一体的，是分散的）
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
     image = cv2.dilate(image, kernel)
-    #cv2.imshow('one ', image)
+    cv2.imshow('one ', image)
     return image
 # -----STEP3.2 拆分车牌函数，将车牌内各个字符分离-----
 def splitPlate(image):
@@ -98,7 +100,7 @@ def splitPlate(image):
     for item in contours:
         rect = cv2.boundingRect(item)
         words.append(rect)
-    #print(len(contours))  #测试语句：看看找到多少个轮廓
+    print(len(contours))  #测试语句：看看找到多少个轮廓
     #-----测试语句：看看轮廓效果-----
     imageColor=cv2.cvtColor(image,cv2.COLOR_GRAY2BGR)
     x = cv2.drawContours(imageColor, contours, -1, (0, 0, 255), 1)
@@ -114,7 +116,7 @@ def splitPlate(image):
             plateChar = image[word[1]:word[1] + word[3], word[0]:word[0] + word[2]]
             plateChars.append(plateChar)
     # 测试语句：查看各个字符
-    # for i,im in enumerate(plateChars):
+    #for i,im in enumerate(plateChars):
     #     cv2.imshow("char"+str(i),im)
     return plateChars
 
@@ -127,16 +129,18 @@ templateDict = {0:'0',1:'1',2:'2',3:'3',4:'4',5:'5',6:'6',7:'7',8:'8',9:'9',
             34:'京',35:'津',36:'冀',37:'晋',38:'蒙',39:'辽',40:'吉',41:'黑',
             42:'沪',43:'苏',44:'浙',45:'皖',46:'闽',47:'赣',48:'鲁',49:'豫',
             50:'鄂',51:'湘',52:'粤',53:'桂',54:'琼',55:'渝',56:'川',57:'贵',
-            58:'云',59:'藏',60:'陕',61:'甘',62:'青',63:'宁',64:'新',
-            65:'港',66:'澳',67:'台'}
+            58:'云',59:'藏',60:'陕',61:'甘',62:'青',63:'宁',64:'新'}
+#,65:'港',66:'澳',67:'台'
 #-----------STEP4.2 获取所有字符的路径信息------------
 def getcharacters():
     c=[]
-    for i in range(0,67):
+    for i in range(0,65):
         words=[]
-        words.extend(glob.glob('template/'+templateDict.get(i)+'/*.*'))
+        #words.extend(glob.glob('template/'+templateDict.get(i)+'/*.*'))
+        words.extend(glob.glob('data/'+templateDict.get(i)+'/*.*'))
         c.append(words)
     return c
+'''
 ####方法一（最佳匹配）####
 #----------STEP4.3 计算匹配值函数-------------
 def getMatchValue(template,image):
@@ -156,7 +160,6 @@ def getMatchValue(template,image):
     # 将计算结果返回
     return result[0][0]
 #----------STEP4.4 对车牌内字符进行识别------------
-####方法一（匹配度）####
 def matchChars(plates,chars):
     results=[]   #存储所有的识别结果
     #最外层循环：逐个遍历要识别的字符。
@@ -175,6 +178,7 @@ def matchChars(plates,chars):
         results.append(r)   #将每一个分割字符的识别结果加入到results内
     return results   #返回所有的识别结果
 
+'''
 ####方法二（支持向量机）####
 def svm(plates,chars):
     # ----------获取训练数据----------------
@@ -184,32 +188,44 @@ def svm(plates,chars):
     svm.setKernel(cv2.ml.SVM_LINEAR)  # 设置kernel类型，可以使用非线性的核函数实现实际上的非线性分类
     svm.train(trainData, cv2.ml.ROW_SAMPLE, trainLabels)  # 训练svm
     # ----------使用svm------------------
+    #全部做训练集时 
+    results=[]
     for plateChar in plates:
-        testData = np.array(plateChar)
-        result = svm.predict(testData)[1]  # 获取识别标签
-        results.append(result)
+        plateCharHog = hog(plateChar)  # 获取hog值
+        plateCharHog = np.float32(np.array(plateCharHog))
+        plateCharHog = plateCharHog.reshape(-1, 64)
+        result = svm.predict(plateCharHog)[1]  # 获取识别标签
+        result = int(result[0][0])
+        results.append(templateDict[result])
     return results
+
 def getData(chars):
     data = []  # 存储所有数字的所有图像
+    # 数据集不均匀（字符模板集中模板数量不同！） 添加或删除一些数据，统一数据的规模
+    size = 200
     for char in chars:
-        num = []  # 临时列表，每次循环用来存储某一个数字的所有图像特征
+        num = []  # 临时列表，每次循环用来存储某一个字符的所有图像特征
+        length = len(char)
+        if length > size:
+            char = char[:size]
+        else:
+            # 直接复制，可能导致学习特征发生偏移，偏向某类中的一个样本
+            while length != size:
+                char.append(char[random.randint(0, length-1)])
+                length = length + 1
         for word in char:  # 逐个提取文件名
-            # step 1:预处理（读取图像，色彩转换、大小转换）
-            image = cv2.imdecode(np.fromfile(word, dtype=np.uint8), 1)
-            image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-            image = cv2.resize(image, (20, 20))  # 调整大小
-            # step3：获取hog值
-            hogValue = hog(image)  # 获取hog值
-            num.append(hogValue)  # 把当前图像的hog值放入num中
-        data.append(num)  # 把单个数字的所有hogValue放入data，每个数字所有hog值占一行
+            image = cv2.imdecode(np.fromfile(word, dtype=np.uint8), 0)
+            ret, image = cv2.threshold(image, 0, 255, cv2.THRESH_OTSU)
+            hogValue = hog(image)  # 获取hog值，64列的数组
+            num.append(hogValue)  # 把当前图像的hog值放入num中，size*64
+        data.append(num)  # 把单个字符的所有hogValue放入data,68*size*64
     x = np.array(data)
-    # step4：划分数据集（训练集、测试集）
-    trainData = np.float32(x[:, :])  # 每个数字的图片的HOG作为训练集
-    # step5：塑形
-    #trainData = trainData.reshape(-1, )  # -1表示自动的适配行，按照内存中的顺序（先行后列）。因此每TRAIN_NUM个元素对应一个数字不同图像的HOG值
-    # step6：打标签
-    trainLabels =np.array([])
+    #全部训练时
+    trainData = np.float32(x)  # 每个数字的图片的HOG作为训练集
+    trainData = trainData.reshape(-1, 64)  # 每size个元素对应一个字符不同图像的HOG值
+    trainLabels = np.repeat(np.arange(65),size)[:,np.newaxis]    #训练图像贴标签
     return trainData, trainLabels
+
 def hog(img):
     # 使用sobel算子计算水平和垂直梯度
     gx = cv2.Sobel(img, cv2.CV_32F, 1, 0)
@@ -239,11 +255,17 @@ if __name__ == "__main__":
     plateChars=splitPlate(image)            #分割车牌，将每个字符独立出来
     for i,im in enumerate(plateChars):      #逐个遍历字符
         cv2.imshow("plateChars"+str(i),im)  #显示分割的字符
-    #4.车牌识别（匹配值）
+    #4.车牌识别
     chars=getcharacters()                   #获取所有模板文件（文件名）
+    '''
+    # 匹配法
     results=matchChars(plateChars, chars)   #使用模板chars逐个识别字符集plates
-    _results = svm(plateChars, chars)
     results="".join(results)                #将列表转换为字符串
     print("识别结果为：",results)             #输出识别结果
+    '''
+    # 支持向量法
+    _results = svm(plateChars, chars)
+    _results = "".join(_results)
+    print("识别结果为：", _results)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
